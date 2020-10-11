@@ -4,31 +4,17 @@
 
 extern crate parse_mediawiki_dump;
 
-const DUMP: &str = concat!(
-    r#"<mediawiki xmlns="http://www.mediawiki.org/xml/export-0.10/">"#,
-    "<page>",
-    "<ns>0</ns>",
-    "<title>alpha</title>",
-    "<revision>",
-    "<format>beta</format>",
-    "<model>gamma</model>",
-    "<text>delta</text>",
-    "</revision>",
-    "</page>",
-    "<page>",
-    "<ns>42</ns>",
-    "<title>epsilon</title>",
-    "<revision>",
-    "<text>zeta</text>",
-    "</revision>",
-    "</page>",
-    "</mediawiki>"
-);
+use std::fs::File;
+use std::io::BufReader;
+
+const DUMP_OCT: &str = "./tests/test.xml";
 
 #[test]
 fn main() {
+    let  file = File::open(DUMP_OCT).unwrap();
+    let reader = BufReader::new(file);
     let mut parser =
-        parse_mediawiki_dump::parse(std::io::BufReader::new(std::io::Cursor::new(DUMP)));
+        parse_mediawiki_dump::parse(reader);
     assert!(match parser.next() {
         Some(Ok(parse_mediawiki_dump::Page {
             format: Some(format),
@@ -36,18 +22,12 @@ fn main() {
             namespace: 0,
             text,
             title,
-        })) => format == "beta" && model == "gamma" && text == "delta" && title == "alpha",
-        _ => false,
-    });
-    assert!(match parser.next() {
-        Some(Ok(parse_mediawiki_dump::Page {
-            format: None,
-            model: None,
-            namespace: 42,
-            text,
-            title,
-        })) => text == "zeta" && title == "epsilon",
+        })) => format == "text/x-wiki" && text == "#REDIRECT [[Computer accessibility]]
+{{R from move}}
+{{R from CamelCase}}
+{{R unprintworthy}}" && model == "wikitext" && title == "AccessibleComputing",
         _ => false,
     });
     assert!(parser.next().is_none());
 }
+
