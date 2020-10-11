@@ -204,7 +204,6 @@ fn next(parser: &mut Parser<impl BufRead>) -> Result<Option<Page>, Error> {
             .read_event(&mut parser.buffer)?
         {
             Event::Start(event) => {
-                println!("{}", std::str::from_utf8(event.local_name()).unwrap());
                 if event.name() != b"page" {
                     let mut buf = vec![];
                     parser.reader.read_to_end(event.name(),&mut buf)?;
