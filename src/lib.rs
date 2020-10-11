@@ -199,18 +199,22 @@ fn next(parser: &mut Parser<impl BufRead>) -> Result<Option<Page>, Error> {
     }
     loop {
         parser.buffer.clear();
-        if !match parser
+        match parser
             .reader
-            .read_namespaced_event(&mut parser.buffer, &mut parser.namespace_buffer)?
+            .read_event(&mut parser.buffer)?
         {
-            (_, Event::End(_)) => return Ok(None),
-            (namespace, Event::Start(event)) => {
-                match_namespace(namespace) && event.local_name() == b"page"
+            Event::Start(event) => {
+                println!("{}", std::str::from_utf8(event.local_name()).unwrap());
+                if event.name() != b"page" {
+                    let mut buf = vec![];
+                    parser.reader.read_to_end(event.name(),&mut buf)?;
+                    continue;
+                }
             }
-            _ => continue,
-        } {
-            skip_element(parser)?;
-            continue;
+            Event::Eof => return Ok(None),
+            _ => {
+                continue;
+            }
         }
         let mut format = None;
         let mut model = None;
@@ -221,9 +225,9 @@ fn next(parser: &mut Parser<impl BufRead>) -> Result<Option<Page>, Error> {
             parser.buffer.clear();
             match match parser
                 .reader
-                .read_namespaced_event(&mut parser.buffer, &mut parser.namespace_buffer)?
+                .read_event(&mut parser.buffer)?
             {
-                (_, Event::End(_)) => {
+                Event::End(_) => {
                     return match (namespace, text, title) {
                         (Some(namespace), Some(text), Some(title)) => Ok(Some(Page {
                             format,
@@ -233,18 +237,14 @@ fn next(parser: &mut Parser<impl BufRead>) -> Result<Option<Page>, Error> {
                             title,
                         })),
                         _ => Err(Error::Format(parser.reader.buffer_position())),
-                    }
+                    };
                 }
-                (namespace, Event::Start(event)) => {
-                    if match_namespace(namespace) {
-                        match event.local_name() {
-                            b"ns" => PageChildElement::Ns,
-                            b"revision" => PageChildElement::Revision,
-                            b"title" => PageChildElement::Title,
-                            _ => PageChildElement::Unknown,
-                        }
-                    } else {
-                        PageChildElement::Unknown
+                Event::Start(event) => {
+                    match event.local_name() {
+                        b"ns" => PageChildElement::Ns,
+                        b"revision" => PageChildElement::Revision,
+                        b"title" => PageChildElement::Title,
+                        _ => PageChildElement::Unknown,
                     }
                 }
                 _ => continue,
@@ -262,23 +262,17 @@ fn next(parser: &mut Parser<impl BufRead>) -> Result<Option<Page>, Error> {
                     }
                     loop {
                         parser.buffer.clear();
-                        match match parser.reader.read_namespaced_event(
-                            &mut parser.buffer,
-                            &mut parser.namespace_buffer,
-                        )? {
-                            (_, Event::End(_)) => match text {
+                        match match parser.reader.read_event(
+                            &mut parser.buffer)? {
+                            Event::End(_) => match text {
                                 None => return Err(Error::Format(parser.reader.buffer_position())),
                                 Some(_) => break,
                             },
-                            (namespace, Event::Start(event)) => if match_namespace(namespace) {
-                                match event.local_name() {
-                                    b"format" => RevisionChildElement::Format,
-                                    b"model" => RevisionChildElement::Model,
-                                    b"text" => RevisionChildElement::Text,
-                                    _ => RevisionChildElement::Unknown,
-                                }
-                            } else {
-                                RevisionChildElement::Unknown
+                            Event::Start(event) => match event.local_name() {
+                                b"format" => RevisionChildElement::Format,
+                                b"model" => RevisionChildElement::Model,
+                                b"text" => RevisionChildElement::Text,
+                                _ => RevisionChildElement::Unknown,
                             },
                             _ => continue,
                         } {
@@ -300,6 +294,7 @@ fn next(parser: &mut Parser<impl BufRead>) -> Result<Option<Page>, Error> {
                 }
                 PageChildElement::Unknown => skip_element(parser)?,
             }
+            parser.buffer.clear()
         }
     }
 }
